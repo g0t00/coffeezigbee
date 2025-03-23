@@ -203,9 +203,10 @@ void toggle_switch(void *arg)
     {
         if (xQueueReceive(ticks_queue, &tick, portMAX_DELAY))
         {
+            ESP_LOGI(TAG, "inital tick %lu", tick);
             value = true;
             change_state();
-            while (xQueueReceive(gpio_evt_queue, &tick, pdMS_TO_TICKS(100)))
+            while (xQueueReceive(ticks_queue, &tick, pdMS_TO_TICKS(100)))
             {
                 ESP_LOGI(TAG, "tick timing %lu", tick);
             }
@@ -230,13 +231,17 @@ void toggle_switch(void *arg)
     //     }
     // }
 }
-
+volatile TickType_t last_tick = 0;
 static void IRAM_ATTR gpio_isr_handler(void *arg)
 {
     // uint32_t gpio_num = (uint32_t)arg;
     // xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
     TickType_t ticks = xTaskGetTickCountFromISR();
-    xQueueSendFromISR(ticks_queue, &ticks, NULL);
+    if (ticks - last_tick > 10)
+    {
+        xQueueSendFromISR(ticks_queue, &ticks, NULL);
+        last_tick = ticks;
+    }
 }
 #define GPIO_INPUT_PIN_SEL ((1ULL << GPIO_PIN_0) | (1ULL << GPIO_PIN_1))
 #define ESP_INTR_FLAG_DEFAULT 0
