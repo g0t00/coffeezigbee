@@ -148,7 +148,7 @@ static void esp_zb_task(void *pvParameters)
     esp_zb_endpoint_config_t ep_config_light = {
         .endpoint = HA_ESP_LIGHT_ENDPOINT,
         .app_profile_id = ESP_ZB_AF_HA_PROFILE_ID,
-        .app_device_id = ESP_ZB_HA_ON_OFF_SWITCH_DEVICE_ID,
+        .app_device_id = ESP_ZB_HA_ON_OFF_LIGHT_DEVICE_ID,
         .app_device_version = 0,
 
     };
@@ -176,6 +176,7 @@ static void esp_zb_task(void *pvParameters)
 #define GPIO_PIN_1 11
 bool value = false;
 static QueueHandle_t gpio_evt_queue = NULL;
+static QueueHandle_t ticks_queue = NULL;
 void change_state()
 {
     ESP_LOGI(TAG, "Turning the switch %s!", value == true ? "ON" : "OFF");
@@ -196,27 +197,46 @@ void change_state()
 }
 void toggle_switch(void *arg)
 {
-    uint32_t io_num;
+    TickType_t tick;
 
     for (;;)
     {
-        if (xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY))
+        if (xQueueReceive(ticks_queue, &tick, portMAX_DELAY))
         {
             value = true;
             change_state();
-            while (xQueueReceive(gpio_evt_queue, &io_num, pdMS_TO_TICKS(100)))
+            while (xQueueReceive(gpio_evt_queue, &tick, pdMS_TO_TICKS(100)))
             {
+                ESP_LOGI(TAG, "tick timing %lu", tick);
             }
             value = false;
+            ESP_LOGI(TAG, "Done configTICK_RATE_HZ %i", configTICK_RATE_HZ);
             change_state();
         }
     }
+    // uint32_t io_num;
+
+    // for (;;)
+    // {
+    //     if (xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY))
+    //     {
+    //         value = true;
+    //         change_state();
+    //         while (xQueueReceive(gpio_evt_queue, &io_num, pdMS_TO_TICKS(100)))
+    //         {
+    //         }
+    //         value = false;
+    //         change_state();
+    //     }
+    // }
 }
 
 static void IRAM_ATTR gpio_isr_handler(void *arg)
 {
-    uint32_t gpio_num = (uint32_t)arg;
-    xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
+    // uint32_t gpio_num = (uint32_t)arg;
+    // xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
+    TickType_t ticks = xTaskGetTickCountFromISR();
+    xQueueSendFromISR(ticks_queue, &ticks, NULL);
 }
 #define GPIO_INPUT_PIN_SEL ((1ULL << GPIO_PIN_0) | (1ULL << GPIO_PIN_1))
 #define ESP_INTR_FLAG_DEFAULT 0
@@ -239,6 +259,7 @@ void setup_gpio(void)
     gpio_set_intr_type(GPIO_PIN_1, GPIO_INTR_ANYEDGE);
     // create a queue to handle gpio event from isr
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+    ticks_queue = xQueueCreate(1000, sizeof(TickType_t));
     // install gpio isr service
     gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
     // hook isr handler for specific gpio pin
