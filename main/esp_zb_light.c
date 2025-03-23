@@ -204,7 +204,7 @@ void toggle_switch(void *arg)
         {
             value = true;
             change_state();
-            while (xQueueReceive(gpio_evt_queue, &io_num, pdMS_TO_TICKS(1000)))
+            while (xQueueReceive(gpio_evt_queue, &io_num, pdMS_TO_TICKS(100)))
             {
             }
             value = false;
